@@ -1,0 +1,17 @@
+{
+  "name": "migraine-app",
+  "version": "1.0.0",
+  "description": "A migraine tracking application",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx cap open",
+    "build": "echo 'Build complete'"
+  },
+  "keywords": [
+    "migraine",
+    "health",
+    "tracking"
+  ],
+  "author": "",
+  "license": "MIT"
+}

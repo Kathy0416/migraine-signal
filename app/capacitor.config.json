@@ -1,0 +1,11 @@
+{
+  "appId": "com.migraineapp.tracker",
+  "appName": "Migraine Tracker",
+  "webDir": ".",
+  "server": {
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
