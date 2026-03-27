@@ -1486,6 +1486,113 @@
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .chat-messages::-webkit-scrollbar {
+            display: none;
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-end;
+        }
+
+        .chat-input-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .attachment-preview {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background: var(--form-bg);
+            border-radius: 8px;
+            max-height: 100px;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .attachment-preview::-webkit-scrollbar {
+            display: none;
+        }
+
+        .attachment-item {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.3rem 0.6rem;
+            background: rgba(100, 149, 237, 0.2);
+            border-radius: 15px;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+
+        .attachment-item .remove-attachment {
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .attachment-item .remove-attachment:hover {
+            color: var(--migraine-red);
+        }
+
+        .attachment-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .attachment-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--accent-blue-soft);
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .message-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .message-attachment {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.3rem 0.6rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .message-attachment:hover {
+            background: rgba(255, 255, 255, 0.2);
         }
         
         .message {
@@ -1583,6 +1690,12 @@
             min-height: 40px;
             max-height: 120px;
             overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #chat-input::-webkit-scrollbar {
+            display: none;
         }
         
         #chat-input:focus {
@@ -1681,7 +1794,12 @@
         
         <div class="chat-input-area">
             <div class="chat-input-container">
-                <textarea id="chat-input" placeholder="输入你的问题..." rows="1"></textarea>
+                <input type="file" id="file-input" multiple accept="image/*,.pdf,.doc,.docx,.txt">
+                <button class="attachment-btn" id="attachment-btn" title="添加附件">📎</button>
+                <div class="chat-input-wrapper">
+                    <div id="attachment-preview" class="attachment-preview" style="display: none;"></div>
+                    <textarea id="chat-input" placeholder="输入你的问题..." rows="1"></textarea>
+                </div>
                 <button id="send-btn">➤</button>
             </div>
         </div>

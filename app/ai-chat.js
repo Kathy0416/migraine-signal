@@ -7,14 +7,20 @@ const closeChatBtn = document.getElementById('close-chat-btn');
 const chatMessages = document.getElementById('chat-messages');
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-btn');
+const attachmentBtn = document.getElementById('attachment-btn');
+const fileInput = document.getElementById('file-input');
+const attachmentPreview = document.getElementById('attachment-preview');
 
 // 聊天历史记录
 let chatHistory = [];
 
+// 当前附件列表
+let currentAttachments = [];
+
 // DeepSeek API 配置（请在部署前替换为真实KEY）
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 let DEEPSEEK_API_KEY = localStorage.getItem('deepseekApiKey') || 'YOUR_DEEPSEEK_API_KEY';
-const DEEPSEEK_MODEL = 'deepseek-chat';
+const DEEPSEEK_MODEL = 'deepseek-reasoner';
 
 function setDeepSeekApiKey(key) {
     if (key && key.trim()) {
@@ -56,13 +62,13 @@ function setupDeepSeekConfig() {
 function addChatEventListeners() {
     // 聊天气泡按钮点击事件
     chatBubbleBtn.addEventListener('click', toggleChat);
-    
+
     // 关闭聊天按钮点击事件
     closeChatBtn.addEventListener('click', toggleChat);
-    
+
     // 发送按钮点击事件
     sendBtn.addEventListener('click', sendMessage);
-    
+
     // 输入框回车发送消息
     chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -70,18 +76,26 @@ function addChatEventListeners() {
             sendMessage();
         }
     });
-    
+
     // 输入框自动调整高度
     chatInput.addEventListener('input', autoResizeTextarea);
-    
+
     // 点击聊天界面外部关闭聊天
     document.addEventListener('click', (e) => {
-        if (chatContainer.classList.contains('visible') && 
-            !chatContainer.contains(e.target) && 
+        if (chatContainer.classList.contains('visible') &&
+            !chatContainer.contains(e.target) &&
             e.target !== chatBubbleBtn) {
             toggleChat();
         }
     });
+
+    // 附件按钮点击事件
+    attachmentBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // 文件选择事件
+    fileInput.addEventListener('change', handleFileSelect);
 }
 
 // 切换聊天界面显示/隐藏
@@ -101,6 +115,99 @@ function autoResizeTextarea() {
     // 设置新高度，限制最大高度
     const newHeight = Math.min(chatInput.scrollHeight, 120);
     chatInput.style.height = `${newHeight}px`;
+}
+
+// 处理文件选择
+function handleFileSelect(e) {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+        // 检查文件大小限制 (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            alert(`文件 "${file.name}" 太大，请上传小于10MB的文件`);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const attachment = {
+                id: Date.now() + Math.random().toString(36).substr(2, 9),
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                data: event.target.result
+            };
+            currentAttachments.push(attachment);
+            updateAttachmentPreview();
+        };
+        reader.readAsDataURL(file);
+    });
+    // 清空input以便可以再次选择相同文件
+    fileInput.value = '';
+}
+
+// 更新附件预览
+function updateAttachmentPreview() {
+    if (currentAttachments.length === 0) {
+        attachmentPreview.style.display = 'none';
+        attachmentPreview.innerHTML = '';
+        return;
+    }
+
+    attachmentPreview.style.display = 'flex';
+    attachmentPreview.innerHTML = currentAttachments.map(att => `
+        <div class="attachment-item" data-id="${att.id}">
+            <span>${getFileIcon(att.type)} ${truncateFileName(att.name)}</span>
+            <span class="remove-attachment" onclick="removeAttachment('${att.id}')">&times;</span>
+        </div>
+    `).join('');
+}
+
+// 获取文件图标
+function getFileIcon(fileType) {
+    if (fileType.startsWith('image/')) return '🖼️';
+    if (fileType.includes('pdf')) return '📄';
+    if (fileType.includes('word') || fileType.includes('document')) return '📝';
+    if (fileType.includes('text')) return '📃';
+    return '📎';
+}
+
+// 截断文件名
+function truncateFileName(name, maxLength = 15) {
+    if (name.length <= maxLength) return name;
+    const ext = name.split('.').pop();
+    const base = name.substring(0, maxLength - ext.length - 3);
+    return `${base}...${ext}`;
+}
+
+// 移除附件
+function removeAttachment(id) {
+    currentAttachments = currentAttachments.filter(att => att.id !== id);
+    updateAttachmentPreview();
+}
+
+// 将附件添加到消息显示
+function getAttachmentsHTML(attachments) {
+    if (!attachments || attachments.length === 0) return '';
+    return `
+        <div class="message-attachments">
+            ${attachments.map(att => `
+                <div class="message-attachment" onclick="downloadAttachment('${att.id}', '${att.name}')">
+                    ${getFileIcon(att.type)} ${truncateFileName(att.name)}
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// 下载附件
+function downloadAttachment(id, name) {
+    const attachment = currentAttachments.find(att => att.id === id);
+    if (attachment && attachment.data) {
+        const link = document.createElement('a');
+        link.href = attachment.data;
+        link.download = name;
+        link.click();
+    }
 }
 
 // 清理AI回复中的HTML标签，避免展示HTML样式
@@ -180,25 +287,35 @@ function formatAIContent(text) {
 // 发送消息
 function sendMessage() {
     const message = chatInput.value.trim();
-    if (!message) return;
-    
+    if (!message && currentAttachments.length === 0) return;
+
     // 清空输入框
     chatInput.value = '';
     // 重置输入框高度
     chatInput.style.height = 'auto';
-    
+
+    // 准备消息数据（包含附件）
+    const messageData = {
+        text: message,
+        attachments: [...currentAttachments]
+    };
+
     // 显示用户消息
-    displayMessage(message, 'user');
-    
+    displayMessage(message, 'user', currentAttachments);
+
     // 添加到聊天历史
-    addToChatHistory(message, 'user');
-    
+    addToChatHistory(messageData, 'user');
+
+    // 清空当前附件
+    currentAttachments = [];
+    updateAttachmentPreview();
+
     // 发送消息给AI并获取回复
-    getAIResponse(message);
+    getAIResponse(message, messageData.attachments);
 }
 
 // 显示消息
-function displayMessage(text, sender) {
+function displayMessage(text, sender, attachments = null) {
     const messageEl = document.createElement('div');
     messageEl.className = `message ${sender}`;
 
@@ -208,6 +325,10 @@ function displayMessage(text, sender) {
         messageEl.innerHTML = formatAIContent(safeText);
     } else {
         messageEl.textContent = text;
+        // 添加附件显示
+        if (attachments && attachments.length > 0) {
+            messageEl.innerHTML += getAttachmentsHTML(attachments);
+        }
     }
 
     chatMessages.appendChild(messageEl);
@@ -287,62 +408,106 @@ async function getAIResponse(userMessage) {
 function generateMockAIResponse(userMessage) {
     // 简单的关键词匹配回复
     const lowerMessage = userMessage.toLowerCase();
+    const lastMigraine = getLastMigraineInfo();
+    const diaryEntries = getUserDiaryNotes();
+
+    // 个性化前缀
+    let personalizedPrefix = '';
+    if (lastMigraine) {
+        personalizedPrefix = `根据你的记录，你最近一次偏头痛是在${lastMigraine.daysAgo}天前。`;
+    }
 
     if (/触发因素|分析|原因|建议|怎么\s*预防/.test(lowerMessage)) {
         const analysis = getMigraineTriggerAnalysis();
         if (analysis.migraineCount > 0) {
             return generateTriggerAnalysisResponse(userMessage);
         }
-        return '我暂时没有你的偏头痛记录，无法做专属分析。请先在偏头痛日历中新增记录。';
+        return personalizedPrefix + '我暂时没有你的偏头痛记录，无法做专属分析。请先在偏头痛日历中新增记录。';
+    }
+
+    // 最近一次偏头痛相关
+    if (/最近|上次|多久|什么时候/.test(lowerMessage) && /偏头痛|头痛|发作/.test(lowerMessage)) {
+        if (lastMigraine) {
+            let response = `你最近一次偏头痛是在 ${lastMigraine.daysAgo} 天前（${lastMigraine.date}）。`;
+            if (lastMigraine.diary) {
+                response += `\n\n当时的记录："${lastMigraine.diary}"`;
+            }
+            if (lastMigraine.triggers.length > 0) {
+                response += `\n\n记录的触发因素：${lastMigraine.triggers.join('、')}。`;
+            }
+            response += `\n\n总共记录了 ${lastMigraine.totalCount} 次偏头痛发作。`;
+            return response;
+        }
+        return '我还没有检测到你的偏头痛历史记录。请在日历中添加记录。';
+    }
+
+    // 日记相关
+    if (/日记|记录|笔记/.test(lowerMessage)) {
+        if (diaryEntries.length > 0) {
+            let response = `你共有 ${diaryEntries.length} 条日记记录。最近的记录包括：\n\n`;
+            diaryEntries.slice(0, 3).forEach((entry, index) => {
+                response += `${index + 1}. ${entry.date}${entry.migraine ? '（偏头痛日）' : ''}：${entry.diary.substring(0, 60)}${entry.diary.length > 60 ? '...' : ''}\n`;
+            });
+            return response;
+        }
+        return '你还没有添加任何日记记录。建议在每次偏头痛发作后记录你的感受和可能的触发因素。';
     }
 
     // 偏头痛相关回复
     if (lowerMessage.includes('偏头痛') || lowerMessage.includes('头痛')) {
-        return '偏头痛是一种常见的神经系统疾病，特征是反复发作的中重度头痛，通常伴有恶心、呕吐、对光和声音敏感。建议保持规律的作息、避免触发因素，如压力、缺乏睡眠、某些食物等。如果症状严重，建议咨询医生。';
+        return personalizedPrefix + '偏头痛是一种常见的神经系统疾病，特征是反复发作的中重度头痛，通常伴有恶心、呕吐、对光和声音敏感。建议保持规律的作息、避免触发因素，如压力、缺乏睡眠、某些食物等。如果症状严重，建议咨询医生。';
     }
-    
+
     // 食物触发因素相关回复
     if (lowerMessage.includes('吃了') || lowerMessage.includes('食物') || lowerMessage.includes('巧克力') || lowerMessage.includes('咖啡') || lowerMessage.includes('酒精') || lowerMessage.includes('不舒服')) {
-        return '某些食物确实可能触发偏头痛，常见的包括巧克力、咖啡因、酒精、含有硝酸盐的食物等。如果你刚吃完巧克力后感到不舒服，建议：1. 休息在安静黑暗的房间；2. 多喝水帮助代谢；3. 记录这次发作，以便识别个人触发因素；4. 如果症状严重，可服用止痛药。';
+        return personalizedPrefix + '某些食物确实可能触发偏头痛，常见的包括巧克力、咖啡因、酒精、含有硝酸盐的食物等。如果你刚吃完某些食物后感到不舒服，建议：1. 休息在安静黑暗的房间；2. 多喝水帮助代谢；3. 记录这次发作，以便识别个人触发因素；4. 如果症状严重，可服用止痛药。';
     }
-    
+
     // 触发因素相关回复
     if (lowerMessage.includes('触发因素') || lowerMessage.includes('原因') || lowerMessage.includes('为什么')) {
-        return '偏头痛的常见触发因素包括：压力、睡眠不足或过多、饮食因素（如酒精、咖啡因、巧克力、硝酸盐等）、荷尔蒙变化、环境因素（如强光、噪音、天气变化）等。';
+        return personalizedPrefix + '偏头痛的常见触发因素包括：压力、睡眠不足或过多、饮食因素（如酒精、咖啡因、巧克力、硝酸盐等）、荷尔蒙变化、环境因素（如强光、噪音、天气变化）等。';
     }
-    
+
     // 治疗方法相关回复
     if (lowerMessage.includes('治疗') || lowerMessage.includes('缓解') || lowerMessage.includes('怎么办') || lowerMessage.includes('怎么治')) {
-        return '偏头痛的治疗包括：休息在安静、黑暗的房间，服用止痛药（如布洛芬、对乙酰氨基酚），避免触发因素，保持规律的生活习惯，尝试放松技巧（如深呼吸、冥想），严重时可使用处方药。';
+        return personalizedPrefix + '偏头痛的治疗包括：休息在安静、黑暗的房间，服用止痛药（如布洛芬、对乙酰氨基酚），避免触发因素，保持规律的生活习惯，尝试放松技巧（如深呼吸、冥想），严重时可使用处方药。';
     }
-    
+
     // 记录相关回复
-    if (lowerMessage.includes('记录') || lowerMessage.includes('日记') || lowerMessage.includes('跟踪')) {
+    if (lowerMessage.includes('记录') || lowerMessage.includes('跟踪')) {
         return '记录偏头痛发作情况有助于识别触发因素和规律。建议记录发作时间、持续时间、疼痛程度、伴随症状、当天的饮食、睡眠、压力水平等信息。';
     }
-    
+
     // 症状相关回复
     if (lowerMessage.includes('症状') || lowerMessage.includes('表现') || lowerMessage.includes('感觉')) {
         return '偏头痛的典型症状包括：单侧搏动性头痛、中重度疼痛、恶心呕吐、对光和声音敏感、有时伴有视觉先兆（如闪光、暗点）等。症状通常持续4-72小时。';
     }
-    
+
     // 苹果/食物相关
     if (lowerMessage.includes('苹果') || lowerMessage.includes('水果')) {
         return '苹果通常被认为是健康食品，不是偏头痛的典型触发因素。建议观察自身反应，如果你有明确关联，可以继续记录；否则继续保持均衡饮食与规律作息。';
     }
 
     // 其他情况
-    return '抱歉，我不太明白你的问题。我是一个专注于偏头痛相关问题的AI助手，你可以问我关于偏头痛的症状、触发因素、治疗方法等问题。如果你希望测试 DeepSeek 实际回答，请检查 API Key 是否已输入并保存，控制台看是否有网络请求。';
+    return personalizedPrefix + '抱歉，我不太明白你的问题。我是一个专注于偏头痛相关问题的AI助手，你可以问我关于偏头痛的症状、触发因素、治疗方法，或者询问"最近一次偏头痛是什么时候"、"我的日记记录"等问题。如果你希望测试 DeepSeek 实际回答，请检查 API Key 是否已输入并保存。';
 }
 
 // 添加到聊天历史
-function addToChatHistory(text, sender) {
+function addToChatHistory(data, sender) {
+    let messageData;
+    if (typeof data === 'string') {
+        messageData = { text: data, attachments: [] };
+    } else {
+        messageData = data;
+    }
+
     chatHistory.push({
-        text: text,
+        text: messageData.text || '',
+        attachments: messageData.attachments || [],
         sender: sender,
         timestamp: new Date().toISOString()
     });
-    
+
     // 限制聊天历史长度
     if (chatHistory.length > 50) {
         chatHistory.shift();
@@ -360,10 +525,10 @@ function loadChatHistory() {
     if (savedHistory) {
         try {
             chatHistory = JSON.parse(savedHistory);
-            
+
             // 显示聊天历史
             chatHistory.forEach(message => {
-                displayMessage(message.text, message.sender);
+                displayMessage(message.text, message.sender, message.attachments);
             });
         } catch (e) {
             console.error('加载聊天历史失败:', e);
@@ -383,6 +548,87 @@ function loadMigraineCalendarData() {
         data = {};
     }
     return data;
+}
+
+// 获取用户的日记/笔记内容
+function getUserDiaryNotes() {
+    const data = loadMigraineCalendarData();
+    const entries = Object.entries(data || {});
+
+    // 筛选有日记内容的条目
+    const diaryEntries = entries
+        .filter(([date, item]) => item && item.diary && item.diary.trim())
+        .map(([date, item]) => ({
+            date: date,
+            diary: item.diary,
+            migraine: item.migraine || false,
+            triggers: item.triggers || []
+        }))
+        .sort((a, b) => new Date(b.date) - new Date(a.date)); // 按日期从新到旧排序
+
+    return diaryEntries;
+}
+
+// 获取最近一次偏头痛记录
+function getLastMigraineInfo() {
+    const data = loadMigraineCalendarData();
+    const entries = Object.entries(data || {});
+
+    // 筛选有偏头痛的条目
+    const migraineEntries = entries
+        .filter(([date, item]) => item && item.migraine)
+        .map(([date, item]) => ({
+            date: date,
+            diary: item.diary || '',
+            triggers: item.triggers || []
+        }))
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    if (migraineEntries.length === 0) {
+        return null;
+    }
+
+    const lastMigraine = migraineEntries[0];
+    const daysSinceLastMigraine = Math.floor((new Date() - new Date(lastMigraine.date)) / (1000 * 60 * 60 * 24));
+
+    return {
+        date: lastMigraine.date,
+        daysAgo: daysSinceLastMigraine,
+        diary: lastMigraine.diary,
+        triggers: lastMigraine.triggers,
+        totalCount: migraineEntries.length
+    };
+}
+
+// 生成用户笔记摘要
+function generateUserNotesSummary() {
+    const diaryEntries = getUserDiaryNotes();
+    const lastMigraine = getLastMigraineInfo();
+
+    let summary = '';
+
+    // 添加最近一次偏头痛信息
+    if (lastMigraine) {
+        summary += `用户最近一次偏头痛是在 ${lastMigraine.daysAgo} 天前（${lastMigraine.date}）。`;
+        if (lastMigraine.diary) {
+            summary += `当时的记录："${lastMigraine.diary.substring(0, 100)}${lastMigraine.diary.length > 100 ? '...' : ''}" `;
+        }
+        if (lastMigraine.triggers.length > 0) {
+            summary += `记录的触发因素：${lastMigraine.triggers.join('、')}。`;
+        }
+        summary += `\n`;
+    }
+
+    // 添加最近的日记摘要
+    if (diaryEntries.length > 0) {
+        const recentEntries = diaryEntries.slice(0, 5); // 最近5条
+        summary += `\n用户最近的日记记录：\n`;
+        recentEntries.forEach((entry, index) => {
+            summary += `${index + 1}. ${entry.date}${entry.migraine ? '（偏头痛日）' : ''}：${entry.diary.substring(0, 80)}${entry.diary.length > 80 ? '...' : ''}\n`;
+        });
+    }
+
+    return summary || '用户暂无日记记录。';
 }
 
 // 统计触发因素
@@ -448,7 +694,7 @@ function generateTriggerAnalysisResponse(userMessage) {
 }
 
 // 集成AI API的函数（DeepSeek优先）
-async function callAIAPI(message) {
+async function callAIAPI(message, attachments = []) {
     // 运行时重新读本地 Key，确保新保存的可用
     const localKey = localStorage.getItem('deepseekApiKey');
     if (localKey && localKey.trim()) {
@@ -463,6 +709,8 @@ async function callAIAPI(message) {
 
     const baseSystemPrompt = '你是一个专业的偏头痛健康助手，提供温和、实用并且符合健康安全的建议。';
     const analysis = getMigraineTriggerAnalysis();
+    const userNotesSummary = generateUserNotesSummary();
+
     let userDataSummary = '';
     if (analysis.migraineCount > 0) {
         userDataSummary = `用户历史记录：${analysis.migraineCount}次偏头痛，顶级触发：${analysis.topTriggers.map(t => `${t.trigger}(${t.count})`).join('、')}。`;
@@ -470,7 +718,26 @@ async function callAIAPI(message) {
         userDataSummary = '用户暂无偏头痛记录。';
     }
 
-    const systemPrompt = `${baseSystemPrompt} ${userDataSummary} 请在回答中结合这些信息，并提供实用建议。`;
+    // 构建系统提示词，包含用户笔记
+    const systemPrompt = `${baseSystemPrompt}
+
+${userDataSummary}
+
+用户的日记和笔记信息：
+${userNotesSummary}
+
+请在回答中结合这些信息，特别是：
+1. 参考用户最近一次偏头痛的时间和情况
+2. 结合用户的日记内容给出个性化建议
+3. 如果用户提到了触发因素，结合历史数据分析
+4. 提供实用、温和的健康建议`;
+
+    // 构建消息内容
+    let userContent = message;
+    if (attachments && attachments.length > 0) {
+        const attachmentNames = attachments.map(att => att.name).join('、');
+        userContent = `[用户上传了附件：${attachmentNames}]\n\n${message}`;
+    }
 
     const chatMessagesPayload = [
         { role: 'system', content: systemPrompt },
@@ -478,7 +745,7 @@ async function callAIAPI(message) {
             role: msg.sender === 'user' ? 'user' : 'assistant',
             content: msg.text
         })),
-        { role: 'user', content: message }
+        { role: 'user', content: userContent }
     ];
 
     const response = await fetch(DEEPSEEK_API_URL, {
